@@ -1,12 +1,10 @@
 /**
- * Day 2 Main Application - MVC Implementation
- * 
- * Orchestrates semua komponen:
- * - Storage Manager
- * - Repositories
- * - Controllers
- * - Views
- * - User Authentication
+ * Day 4 Main Application - MVC Implementation
+ * * Mengelola alur aplikasi:
+ * - Inisialisasi Repositories, Controllers, dan Views
+ * - Manajemen Authentication (Login/Logout)
+ * - Event Listeners untuk Fitur Kategori (Day 4)
+ * - Sinkronisasi Statistik Dashboard
  */
 
 // Global application state
@@ -21,40 +19,36 @@ let app = {
 };
 
 /**
- * Initialize aplikasi
+ * 1. INITIALIZE APPLICATION
  */
 function initializeApp() {
-    console.log('🚀 Initializing Day 2 Task Management System...');
+    console.log('🚀 Initializing Day 4 Task Management System...');
     
     try {
         // Initialize storage manager
         app.storage = new EnhancedStorageManager('taskAppDay2', '2.0');
-        console.log('✅ Storage manager initialized');
         
         // Initialize repositories
         app.userRepository = new UserRepository(app.storage);
         app.taskRepository = new TaskRepository(app.storage);
-        console.log('✅ Repositories initialized');
         
         // Initialize controllers
         app.userController = new UserController(app.userRepository);
         app.taskController = new TaskController(app.taskRepository, app.userRepository);
-        console.log('✅ Controllers initialized');
         
         // Initialize view
         app.taskView = new TaskView(app.taskController, app.userController);
-        console.log('✅ Views initialized');
         
-        // Setup authentication event listeners
+        // Setup semua event listener
         setupAuthEventListeners();
         
-        // Create demo user jika belum ada
+        // Create demo data jika kosong
         createDemoUserIfNeeded();
         
-        // Show login section
+        // Cek sesi login atau tampilkan halaman login
         showLoginSection();
         
-        console.log('✅ Day 2 Application initialized successfully!');
+        console.log('✅ Day 4 Application initialized successfully!');
         
     } catch (error) {
         console.error('❌ Failed to initialize application:', error);
@@ -63,76 +57,111 @@ function initializeApp() {
 }
 
 /**
- * Setup authentication event listeners
+ * 2. EVENT LISTENERS SETUP
  */
 function setupAuthEventListeners() {
-    // Login button
+    // --- Authentication Events ---
     const loginBtn = document.getElementById('loginBtn');
-    if (loginBtn) {
-        loginBtn.addEventListener('click', handleLogin);
-    }
+    if (loginBtn) loginBtn.addEventListener('click', handleLogin);
     
-    // Register button
     const registerBtn = document.getElementById('registerBtn');
-    if (registerBtn) {
-        registerBtn.addEventListener('click', showRegisterModal);
-    }
+    if (registerBtn) registerBtn.addEventListener('click', showRegisterModal);
     
-    // Logout button
     const logoutBtn = document.getElementById('logoutBtn');
-    if (logoutBtn) {
-        logoutBtn.addEventListener('click', handleLogout);
-    }
+    if (logoutBtn) logoutBtn.addEventListener('click', handleLogout);
     
-    // Username input (Enter key)
-    const usernameInput = document.getElementById('usernameInput');
-    if (usernameInput) {
-        usernameInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                handleLogin();
-            }
-        });
-    }
-    
-    // Register form
     const registerForm = document.getElementById('registerForm');
-    if (registerForm) {
-        registerForm.addEventListener('submit', handleRegister);
-    }
+    if (registerForm) registerForm.addEventListener('submit', handleRegister);
+
+    // --- Day 4: Category Filter Events (Step 3.6) ---
+    // Mencari semua tombol kategori yang baru ditambahkan di index.html
+    const categoryButtons = document.querySelectorAll('.category-btn');
+    categoryButtons.forEach(btn => {
+        btn.addEventListener('click', handleCategoryFilter);
+    });
     
-    // Register modal close
-    const closeRegisterModal = document.getElementById('closeRegisterModal');
-    const cancelRegister = document.getElementById('cancelRegister');
-    if (closeRegisterModal) {
-        closeRegisterModal.addEventListener('click', hideRegisterModal);
-    }
-    if (cancelRegister) {
-        cancelRegister.addEventListener('click', hideRegisterModal);
-    }
-    
-    // Quick action buttons
+    // --- UI Control Events ---
     const showOverdueBtn = document.getElementById('showOverdueBtn');
     const showDueSoonBtn = document.getElementById('showDueSoonBtn');
-    const exportDataBtn = document.getElementById('exportDataBtn');
     const refreshTasks = document.getElementById('refreshTasks');
     
-    if (showOverdueBtn) {
-        showOverdueBtn.addEventListener('click', showOverdueTasks);
-    }
-    if (showDueSoonBtn) {
-        showDueSoonBtn.addEventListener('click', showDueSoonTasks);
-    }
-    if (exportDataBtn) {
-        exportDataBtn.addEventListener('click', exportAppData);
-    }
+    if (showOverdueBtn) showOverdueBtn.addEventListener('click', showOverdueTasks);
+    if (showDueSoonBtn) showDueSoonBtn.addEventListener('click', showDueSoonTasks);
+    
     if (refreshTasks) {
-        refreshTasks.addEventListener('click', () => app.taskView.refresh());
+        refreshTasks.addEventListener('click', () => {
+            app.taskView.refresh();
+            renderCategoryStats(); // Perbarui statistik saat refresh
+        });
     }
 }
 
 /**
- * Handle user login
+ * 3. CATEGORY & FILTER LOGIC (DAY 4)
  */
+
+/**
+ * Menangani perubahan filter kategori (Step 3.6)
+ * @param {Event} event 
+ */
+function handleCategoryFilter(event) {
+    const category = event.target.dataset.category; // Mengambil data-category dari tombol
+    
+    // Visual update: Aktifkan tombol yang diklik
+    document.querySelectorAll('.category-btn').forEach(btn => btn.classList.remove('active'));
+    event.target.classList.add('active');
+    
+    // Reset filter status/prioritas agar tidak tumpang tindih
+    document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+    
+    // Perintahkan View untuk me-render ulang task berdasarkan kategori
+    app.taskView.refresh({ category: category });
+}
+
+/**
+ * Merender statistik kategori di dashboard (Step 3.6)
+ */
+function renderCategoryStats() {
+    const statsContainer = document.getElementById('categoryStats');
+    if (!statsContainer || !app.currentUser) return;
+    
+    // Ambil data statistik dari Controller
+    const response = app.taskController.getCategoryStats();
+    
+    if (response.success) {
+        const { byCategory } = response.data;
+        
+        // Buat HTML untuk setiap kategori yang memiliki task
+        const statsHTML = Object.entries(byCategory)
+            .filter(([_, stats]) => stats.total > 0)
+            .map(([category, stats]) => {
+                // Gunakan helper dari model untuk mendapatkan nama tampilan
+                const displayName = EnhancedTask.prototype.getCategoryDisplayName.call({ _category: category });
+                
+                return `
+                    <div class="category-stat-item">
+                        <h4>${displayName}</h4>
+                        <div class="stat-number">${stats.total}</div>
+                        <small>${stats.completed} selesai</small>
+                    </div>
+                `;
+            }).join('');
+        
+        if (statsHTML) {
+            statsContainer.innerHTML = `
+                <h3>Statistik per Kategori</h3>
+                <div class="category-stats">${statsHTML}</div>
+            `;
+        } else {
+            statsContainer.innerHTML = '<p class="empty-stats">Belum ada data kategori.</p>';
+        }
+    }
+}
+
+/**
+ * 4. AUTHENTICATION HANDLERS
+ */
+
 function handleLogin() {
     const usernameInput = document.getElementById('usernameInput');
     const username = usernameInput.value.trim();
@@ -146,18 +175,14 @@ function handleLogin() {
     
     if (response.success) {
         app.currentUser = response.data;
-        
-        // Set current user di task controller
         app.taskController.setCurrentUser(app.currentUser.id);
         
-        // Show main content
         showMainContent();
-        
-        // Load user list untuk assign dropdown
         loadUserListForAssign();
-        
-        // Refresh views
         app.taskView.refresh();
+        
+        // Day 4: Render statistik kategori saat login berhasil
+        renderCategoryStats();
         
         showMessage(response.message, 'success');
     } else {
@@ -165,273 +190,105 @@ function handleLogin() {
     }
 }
 
-/**
- * Handle user logout
- */
 function handleLogout() {
-    const response = app.userController.logout();
-    
+    app.userController.logout();
     app.currentUser = null;
-    
-    // Hide main content
     hideMainContent();
-    
-    // Show login section
     showLoginSection();
+    showMessage('Berhasil logout', 'info');
+}
+
+/**
+ * 5. UI HELPERS
+ */
+
+function showLoginSection() {
+    document.getElementById('loginSection').style.display = 'flex';
+    document.getElementById('userInfo').style.display = 'none';
+    document.getElementById('mainContent').style.display = 'none';
     
-    showMessage(response.message, 'info');
+    const input = document.getElementById('usernameInput');
+    if (input) input.focus();
 }
 
-/**
- * Show register modal
- */
-function showRegisterModal() {
-    const modal = document.getElementById('registerModal');
-    if (modal) {
-        modal.style.display = 'flex';
-    }
-}
-
-/**
- * Hide register modal
- */
-function hideRegisterModal() {
-    const modal = document.getElementById('registerModal');
-    if (modal) {
-        modal.style.display = 'none';
-    }
+function showMainContent() {
+    document.getElementById('loginSection').style.display = 'none';
+    document.getElementById('userInfo').style.display = 'flex';
+    document.getElementById('mainContent').style.display = 'block';
     
-    // Reset form
-    const form = document.getElementById('registerForm');
-    if (form) {
-        form.reset();
+    if (app.currentUser) {
+        document.getElementById('welcomeMessage').textContent = 
+            `Selamat datang, ${app.currentUser.fullName || app.currentUser.username}!`;
     }
 }
 
-/**
- * Handle user registration
- */
+function hideMainContent() {
+    document.getElementById('mainContent').style.display = 'none';
+}
+
+function showMessage(message, type = 'info') {
+    if (app.taskView) {
+        app.taskView.showMessage(message, type);
+    } else {
+        console.log(`[${type}] ${message}`);
+    }
+}
+
+// ... (Fungsi pendukung lainnya seperti handleRegister, loadUserList, dll tetap sama)
 function handleRegister(event) {
     event.preventDefault();
-    
     const formData = new FormData(event.target);
     const userData = {
         username: formData.get('username')?.trim(),
         email: formData.get('email')?.trim(),
         fullName: formData.get('fullName')?.trim()
     };
-    
     const response = app.userController.register(userData);
-    
     if (response.success) {
         hideRegisterModal();
         showMessage(response.message, 'success');
-        
-        // Auto-fill username untuk login
-        const usernameInput = document.getElementById('usernameInput');
-        if (usernameInput) {
-            usernameInput.value = userData.username;
-        }
+        document.getElementById('usernameInput').value = userData.username;
     } else {
         showMessage(response.error, 'error');
     }
 }
 
-/**
- * Show login section
- */
-function showLoginSection() {
-    const loginSection = document.getElementById('loginSection');
-    const userInfo = document.getElementById('userInfo');
-    const mainContent = document.getElementById('mainContent');
-    
-    if (loginSection) loginSection.style.display = 'flex';
-    if (userInfo) userInfo.style.display = 'none';
-    if (mainContent) mainContent.style.display = 'none';
-    
-    // Clear username input
-    const usernameInput = document.getElementById('usernameInput');
-    if (usernameInput) {
-        usernameInput.value = '';
-        usernameInput.focus();
+function showRegisterModal() { document.getElementById('registerModal').style.display = 'flex'; }
+function hideRegisterModal() { document.getElementById('registerModal').style.display = 'none'; }
+
+function createDemoUserIfNeeded() {
+    if (app.userRepository.findAll().length === 0) {
+        app.userRepository.create({ username: 'demo', email: 'demo@example.com', fullName: 'Demo User' });
     }
 }
 
-/**
- * Show main content
- */
-function showMainContent() {
-    const loginSection = document.getElementById('loginSection');
-    const userInfo = document.getElementById('userInfo');
-    const mainContent = document.getElementById('mainContent');
-    const welcomeMessage = document.getElementById('welcomeMessage');
-    
-    if (loginSection) loginSection.style.display = 'none';
-    if (userInfo) userInfo.style.display = 'flex';
-    if (mainContent) mainContent.style.display = 'block';
-    
-    if (welcomeMessage && app.currentUser) {
-        welcomeMessage.textContent = `Selamat datang, ${app.currentUser.fullName || app.currentUser.username}!`;
-    }
-}
-
-/**
- * Hide main content
- */
-function hideMainContent() {
-    const mainContent = document.getElementById('mainContent');
-    if (mainContent) {
-        mainContent.style.display = 'none';
-    }
-}
-
-/**
- * Load user list untuk assign dropdown
- */
 function loadUserListForAssign() {
     const response = app.userController.getAllUsers();
-    
     if (response.success) {
-        const assigneeSelect = document.getElementById('taskAssignee');
-        if (assigneeSelect) {
-            // Clear existing options except "self"
-            assigneeSelect.innerHTML = '<option value="self">Diri Sendiri</option>';
-            
-            // Add other users
+        const select = document.getElementById('taskAssignee');
+        if (select) {
+            select.innerHTML = '<option value="self">Diri Sendiri</option>';
             response.data.forEach(user => {
                 if (user.id !== app.currentUser.id) {
-                    const option = document.createElement('option');
-                    option.value = user.id;
-                    option.textContent = user.fullName || user.username;
-                    assigneeSelect.appendChild(option);
+                    const opt = document.createElement('option');
+                    opt.value = user.id;
+                    opt.textContent = user.fullName || user.username;
+                    select.appendChild(opt);
                 }
             });
         }
     }
 }
 
-/**
- * Show overdue tasks
- */
 function showOverdueTasks() {
-    const response = app.taskController.getOverdueTasks();
-    
-    if (response.success) {
-        if (response.count === 0) {
-            showMessage('Tidak ada task yang overdue', 'info');
-        } else {
-            showMessage(`Ditemukan ${response.count} task yang overdue`, 'warning');
-            // Filter view untuk menampilkan overdue tasks
-            // Implementasi ini bisa diperbaiki dengan menambah filter khusus
-        }
-    } else {
-        showMessage(response.error, 'error');
-    }
+    const resp = app.taskController.getOverdueTasks();
+    if (resp.success) showMessage(`Ada ${resp.count} task overdue!`, 'warning');
 }
 
-/**
- * Show tasks due soon
- */
 function showDueSoonTasks() {
-    const response = app.taskController.getTasksDueSoon(3);
-    
-    if (response.success) {
-        if (response.count === 0) {
-            showMessage('Tidak ada task yang akan due dalam 3 hari', 'info');
-        } else {
-            showMessage(`Ditemukan ${response.count} task yang akan due dalam 3 hari`, 'warning');
-        }
-    } else {
-        showMessage(response.error, 'error');
-    }
+    const resp = app.taskController.getTasksDueSoon(3);
+    if (resp.success) showMessage(`${resp.count} task akan segera jatuh tempo.`, 'info');
 }
 
-/**
- * Export app data
- */
-function exportAppData() {
-    const exportData = app.storage.exportData();
-    
-    if (exportData) {
-        const dataStr = JSON.stringify(exportData, null, 2);
-        const dataBlob = new Blob([dataStr], { type: 'application/json' });
-        
-        const link = document.createElement('a');
-        link.href = URL.createObjectURL(dataBlob);
-        link.download = `task-app-backup-${new Date().toISOString().split('T')[0]}.json`;
-        link.click();
-        
-        showMessage('Data berhasil diekspor', 'success');
-    } else {
-        showMessage('Gagal mengekspor data', 'error');
-    }
-}
-
-/**
- * Create demo user jika belum ada
- */
-function createDemoUserIfNeeded() {
-    const users = app.userRepository.findAll();
-    
-    if (users.length === 0) {
-        try {
-            // Buat demo user
-            app.userRepository.create({
-                username: 'demo',
-                email: 'demo@example.com',
-                fullName: 'Demo User'
-            });
-            
-            app.userRepository.create({
-                username: 'john',
-                email: 'john@example.com',
-                fullName: 'John Doe'
-            });
-            
-            console.log('✅ Demo users created');
-        } catch (error) {
-            console.error('Failed to create demo users:', error);
-        }
-    }
-}
-
-/**
- * Show message to user
- */
-function showMessage(message, type = 'info') {
-    if (app.taskView) {
-        app.taskView.showMessage(message, type);
-    } else {
-        console.log(`${type.toUpperCase()}: ${message}`);
-    }
-}
-
-/**
- * Handle errors globally
- */
-window.addEventListener('error', (event) => {
-    console.error('Global error:', event.error);
-    showMessage('Terjadi kesalahan pada aplikasi', 'error');
-});
-
-/**
- * Handle unhandled promise rejections
- */
-window.addEventListener('unhandledrejection', (event) => {
-    console.error('Unhandled promise rejection:', event.reason);
-    showMessage('Terjadi kesalahan pada aplikasi', 'error');
-});
-
-// Initialize app when DOM is ready
+// Initialize on load
 document.addEventListener('DOMContentLoaded', initializeApp);
-
-// Export untuk testing (jika diperlukan)
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = {
-        initializeApp,
-        handleLogin,
-        handleLogout,
-        handleRegister,
-        app
-    };
-}

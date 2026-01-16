@@ -1,9 +1,8 @@
 /**
  * Task View - Mengatur tampilan dan interaksi task
- * 
- * View dalam MVC Pattern:
+ * * View dalam MVC Pattern:
  * - Mengatur DOM manipulation
- * - Handle user interactions
+ * - Handle user interactions (Day 4: Category Filters)
  * - Display data dari Controller
  * - Tidak mengandung business logic
  */
@@ -16,12 +15,15 @@ class TaskView {
         this.taskForm = null;
         this.taskList = null;
         this.taskStats = null;
+        this.categoryStats = null; // NEW: Day 4
         this.filterButtons = null;
+        this.categoryButtons = null; // NEW: Day 4
         this.searchInput = null;
         this.messagesContainer = null;
 
         // Current state
         this.currentFilter = 'all';
+        this.currentCategory = null; // NEW: Day 4
         this.currentSort = 'createdAt';
         this.currentSortOrder = 'desc';
 
@@ -36,11 +38,12 @@ class TaskView {
         this.taskForm = document.getElementById('taskForm');
         this.taskList = document.getElementById('taskList');
         this.taskStats = document.getElementById('taskStats');
+        this.categoryStats = document.getElementById('categoryStats'); // NEW: Day 4
         this.filterButtons = document.querySelectorAll('.filter-btn');
+        this.categoryButtons = document.querySelectorAll('.category-btn'); // NEW: Day 4
         this.searchInput = document.getElementById('searchInput');
         this.messagesContainer = document.getElementById('messages');
 
-        // Create elements jika belum ada
         if (!this.messagesContainer) {
             this.messagesContainer = this._createMessagesContainer();
         }
@@ -50,12 +53,11 @@ class TaskView {
      * Setup event listeners
      */
     _setupEventListeners() {
-        // Task form submission
         if (this.taskForm) {
             this.taskForm.addEventListener('submit', (e) => this._handleTaskFormSubmit(e));
         }
 
-        // Filter buttons
+        // Status filters
         this.filterButtons.forEach(btn => {
             btn.addEventListener('click', (e) => this._handleFilterChange(e));
         });
@@ -71,7 +73,7 @@ class TaskView {
             sortSelect.addEventListener('change', (e) => this._handleSortChange(e));
         }
 
-        // Clear all tasks button
+        // Clear all tasks
         const clearAllBtn = document.getElementById('clearAllTasks');
         if (clearAllBtn) {
             clearAllBtn.addEventListener('click', () => this._handleClearAllTasks());
@@ -79,30 +81,18 @@ class TaskView {
     }
 
     /**
-     * Render task list
+     * Render task list (Day 4: Updated to handle category filters)
+     * @param {Object} externalFilters - Filter tambahan dari app.js
      */
-    renderTasks() {
+    renderTasks(externalFilters = {}) {
         if (!this.taskList) return;
 
-        // Inisialisasi objek filter kosong
-        const filters = {};
+        // Gabungkan state internal dengan filter eksternal (seperti kategori)
+        const filters = { ...externalFilters };
 
-        const activeFilter = this.currentFilter.toLowerCase();
-
-        // Logika untuk menentukan apakah filter itu Kategori, Prioritas, atau Status
-        if (activeFilter !== 'all') {
-            // Daftar kategori dan prioritas yang valid (harus huruf kecil semua)
-            const categories = ['work', 'personal', 'study', 'health', 'finance', 'other'];
-            const priorities = ['low', 'medium', 'high', 'urgent'];
-
-            if (categories.includes(activeFilter)) {
-                filters.category = activeFilter;
-            } else if (priorities.includes(activeFilter)) {
-                filters.priority = activeFilter;
-            } else {
-                // Jika bukan kategori/prioritas, maka dianggap sebagai status (pending, completed, dll)
-                filters.status = activeFilter;
-            }
+        // Handle Status Filter
+        if (this.currentFilter !== 'all') {
+            filters.status = this.currentFilter;
         }
 
         // Get tasks dari controller
@@ -124,26 +114,20 @@ class TaskView {
             return;
         }
 
-        // Render tasks
         const tasksHTML = tasks.map(task => this._createTaskHTML(task)).join('');
         this.taskList.innerHTML = tasksHTML;
 
-        // Setup task-specific event listeners
         this._setupTaskEventListeners();
     }
 
     /**
-     * Render task statistics
+     * Render task statistics (Umum)
      */
     renderStats() {
         if (!this.taskStats) return;
 
         const response = this.taskController.getTaskStats();
-
-        if (!response.success) {
-            console.error('Failed to get stats:', response.error);
-            return;
-        }
+        if (!response.success) return;
 
         const stats = response.data;
 
@@ -152,10 +136,6 @@ class TaskView {
                 <div class="stat-item">
                     <span class="stat-number">${stats.total}</span>
                     <span class="stat-label">Total Tasks</span>
-                </div>
-                <div class="stat-item">
-                    <span class="stat-number">${stats.byStatus.pending || 0}</span>
-                    <span class="stat-label">Pending</span>
                 </div>
                 <div class="stat-item">
                     <span class="stat-number">${stats.completed}</span>
@@ -169,42 +149,17 @@ class TaskView {
                     <span class="stat-number">${stats.overdue}</span>
                     <span class="stat-label">Overdue</span>
                 </div>
-                <div class="stat-item">
-                    <span class="stat-number">${stats.dueSoon}</span>
-                    <span class="stat-label">Due Soon</span>
-                </div>
             </div>
         `;
     }
 
     /**
-     * Show message to user
-     * @param {string} message - Message text
-     * @param {string} type - Message type (success, error, info, warning)
+     * Refresh all views (Day 4: Updated to accept filters)
      */
-    showMessage(message, type = 'info') {
-        if (!this.messagesContainer) return;
-
-        const messageElement = document.createElement('div');
-        messageElement.className = `message message-${type}`;
-        messageElement.textContent = message;
-
-        this.messagesContainer.appendChild(messageElement);
-
-        // Auto remove after 5 seconds
-        setTimeout(() => {
-            if (messageElement.parentNode) {
-                messageElement.parentNode.removeChild(messageElement);
-            }
-        }, 5000);
-    }
-
-    /**
-     * Refresh all views
-     */
-    refresh() {
-        this.renderTasks();
+    refresh(filters = {}) {
+        this.renderTasks(filters);
         this.renderStats();
+        // Statistik kategori di-render melalui app.js renderCategoryStats()
     }
 
     /**
@@ -224,12 +179,6 @@ class TaskView {
             tags: formData.get('tags') ? formData.get('tags').split(',').map(tag => tag.trim()) : []
         };
 
-        // Handle assignee
-        const assigneeId = formData.get('assigneeId');
-        if (assigneeId && assigneeId !== 'self') {
-            taskData.assigneeId = assigneeId;
-        }
-
         const response = this.taskController.createTask(taskData);
 
         if (response.success) {
@@ -242,13 +191,15 @@ class TaskView {
     }
 
     /**
-     * Handle filter change
+     * Handle filter change (Status)
      */
     _handleFilterChange(event) {
         const filterType = event.target.dataset.filter;
 
-        // Update active filter button
         this.filterButtons.forEach(btn => btn.classList.remove('active'));
+        // Juga hapus active dari tombol kategori jika ada filter status baru
+        document.querySelectorAll('.category-btn').forEach(btn => btn.classList.remove('active'));
+        
         event.target.classList.add('active');
 
         this.currentFilter = filterType;
@@ -256,163 +207,19 @@ class TaskView {
     }
 
     /**
-     * Handle search
-     */
-    _handleSearch(event) {
-        const query = event.target.value.trim();
-
-        if (query === '') {
-            this.renderTasks();
-            return;
-        }
-
-        const response = this.taskController.searchTasks(query);
-
-        if (response.success) {
-            const tasks = response.data;
-
-            if (tasks.length === 0) {
-                this.taskList.innerHTML = `
-                    <div class="empty-state">
-                        <p>Tidak ada task yang ditemukan untuk "${query}"</p>
-                        <small>Coba kata kunci yang berbeda</small>
-                    </div>
-                `;
-            } else {
-                const tasksHTML = tasks.map(task => this._createTaskHTML(task)).join('');
-                this.taskList.innerHTML = tasksHTML;
-                this._setupTaskEventListeners();
-            }
-        } else {
-            this.showMessage(response.error, 'error');
-        }
-    }
-
-    /**
-     * Handle sort change
-     */
-    _handleSortChange(event) {
-        const [sortBy, sortOrder] = event.target.value.split('-');
-        this.currentSort = sortBy;
-        this.currentSortOrder = sortOrder;
-        this.renderTasks();
-    }
-
-    /**
-     * Handle clear all tasks
-     */
-    /**
-     * PERBAIKAN: Fungsi Clear All yang sekarang berfungsi penuh
-     */
-    _handleClearAllTasks() {
-        if (confirm('Apakah Anda yakin ingin menghapus semua task?')) {
-            const response = this.taskController.clearAllTasks();
-            if (response.success) {
-                this.showMessage(response.message, 'success');
-                this.refresh(); // Update tampilan dan statistik
-            } else {
-                this.showMessage(response.error, 'error');
-            }
-        }
-    }
-
-    /**
-     * Setup task-specific event listeners
-     */
-    _setupTaskEventListeners() {
-        // Toggle task status
-        document.querySelectorAll('.btn-toggle').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                const taskId = e.target.closest('.task-item').dataset.taskId;
-                this._handleTaskToggle(taskId);
-            });
-        });
-
-        // Delete task
-        document.querySelectorAll('.btn-delete').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                const taskId = e.target.closest('.task-item').dataset.taskId;
-                this._handleTaskDelete(taskId);
-            });
-        });
-
-        // Edit task (jika ada)
-        document.querySelectorAll('.btn-edit').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                const taskId = e.target.closest('.task-item').dataset.taskId;
-                this._handleTaskEdit(taskId);
-            });
-        });
-    }
-
-    /**
-     * Handle task toggle
-     */
-    _handleTaskToggle(taskId) {
-        const response = this.taskController.toggleTaskStatus(taskId);
-
-        if (response.success) {
-            this.showMessage(response.message, 'success');
-            this.refresh();
-        } else {
-            this.showMessage(response.error, 'error');
-        }
-    }
-
-    /**
-     * Handle task delete
-     */
-    _handleTaskDelete(taskId) {
-        const taskResponse = this.taskController.getTask(taskId);
-
-        if (!taskResponse.success) {
-            this.showMessage(taskResponse.error, 'error');
-            return;
-        }
-
-        const task = taskResponse.data;
-
-        if (confirm(`Apakah Anda yakin ingin menghapus task "${task.title}"?`)) {
-            const response = this.taskController.deleteTask(taskId);
-
-            if (response.success) {
-                this.showMessage(response.message, 'success');
-                this.refresh();
-            } else {
-                this.showMessage(response.error, 'error');
-            }
-        }
-    }
-
-    /**
-     * Handle task edit
-     */
-    _handleTaskEdit(taskId) {
-        // Implementasi edit task
-        // Untuk sekarang, kita tampilkan alert saja
-        alert('Edit task feature akan diimplementasikan nanti');
-    }
-
-    /**
-     * Create HTML for single task
+     * Create HTML for single task (Day 4: Added Category Display)
      */
     _createTaskHTML(task) {
         const priorityClass = `priority-${task.priority}`;
         const statusClass = `status-${task.status}`;
+        const categoryClass = `category-${task.category}`; // NEW: CSS class per kategori
         const overdueClass = task.isOverdue ? 'overdue' : '';
 
-        // Format dates
         const createdDate = new Date(task.createdAt).toLocaleDateString('id-ID');
         const dueDate = task.dueDate ? new Date(task.dueDate).toLocaleDateString('id-ID') : null;
 
-        // Get assignee name
-        let assigneeName = 'Unknown';
-        if (task.assigneeId) {
-            const userResponse = this.userController.getUserById(task.assigneeId);
-            if (userResponse.success) {
-                assigneeName = userResponse.data.fullName || userResponse.data.username;
-            }
-        }
+        // Get Display Name Kategori
+        const categoryDisplay = task.getCategoryDisplayName ? task.getCategoryDisplayName() : task.category;
 
         return `
             <div class="task-item ${priorityClass} ${statusClass} ${overdueClass}" data-task-id="${task.id}">
@@ -421,35 +228,24 @@ class TaskView {
                         <h3 class="task-title">${this._escapeHtml(task.title)}</h3>
                         <div class="task-badges">
                             <span class="task-priority badge-${task.priority}">${task.priority}</span>
-                            <span class="task-category badge-category">${task.category}</span>
+                            <span class="task-category ${categoryClass}">${categoryDisplay}</span>
                             <span class="task-status badge-status">${task.status}</span>
                         </div>
                     </div>
                     
                     ${task.description ? `<p class="task-description">${this._escapeHtml(task.description)}</p>` : ''}
                     
-                    ${task.tags.length > 0 ? `
-                        <div class="task-tags">
-                            ${task.tags.map(tag => `<span class="tag">${this._escapeHtml(tag)}</span>`).join('')}
-                        </div>
-                    ` : ''}
-                    
                     <div class="task-meta">
-                        <small>Dibuat: ${createdDate}</small>
-                        ${dueDate ? `<small class="${task.isOverdue ? 'overdue-text' : ''}">Due: ${dueDate}</small>` : ''}
-                        ${task.assigneeId !== task.ownerId ? `<small>Assigned to: ${assigneeName}</small>` : ''}
-                        ${task.estimatedHours > 0 ? `<small>Estimasi: ${task.estimatedHours}h</small>` : ''}
+                        <small>📅 ${createdDate}</small>
+                        ${dueDate ? `<small class="${task.isOverdue ? 'overdue-text' : ''}">⌛ Due: ${dueDate}</small>` : ''}
                     </div>
                 </div>
                 
                 <div class="task-actions">
-                    <button class="btn btn-toggle" title="${task.isCompleted ? 'Mark incomplete' : 'Mark complete'}">
+                    <button class="btn btn-toggle" title="Toggle Status">
                         ${task.isCompleted ? '↶' : '✓'}
                     </button>
-                    <button class="btn btn-edit" title="Edit task">
-                        ✏️
-                    </button>
-                    <button class="btn btn-delete" title="Delete task">
+                    <button class="btn btn-delete" title="Hapus">
                         🗑️
                     </button>
                 </div>
@@ -458,31 +254,73 @@ class TaskView {
     }
 
     /**
-     * Get empty state HTML
+     * Handle task toggle & delete
      */
+    _setupTaskEventListeners() {
+        this.taskList.querySelectorAll('.btn-toggle').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const taskId = e.target.closest('.task-item').dataset.taskId;
+                const response = this.taskController.toggleTaskStatus(taskId);
+                if (response.success) this.refresh();
+            });
+        });
+
+        this.taskList.querySelectorAll('.btn-delete').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const taskId = e.target.closest('.task-item').dataset.taskId;
+                if (confirm('Hapus task ini?')) {
+                    const response = this.taskController.deleteTask(taskId);
+                    if (response.success) this.refresh();
+                }
+            });
+        });
+    }
+
+    _handleSearch(event) {
+        const query = event.target.value.trim();
+        if (query === '') { this.renderTasks(); return; }
+        const response = this.taskController.searchTasks(query);
+        if (response.success) {
+            const tasksHTML = response.data.map(t => this._createTaskHTML(t)).join('');
+            this.taskList.innerHTML = tasksHTML || '<p>Tidak ditemukan.</p>';
+            this._setupTaskEventListeners();
+        }
+    }
+
+    _handleSortChange(event) {
+        const [sortBy, sortOrder] = event.target.value.split('-');
+        this.currentSort = sortBy;
+        this.currentSortOrder = sortOrder;
+        this.renderTasks();
+    }
+
+    _handleClearAllTasks() {
+        if (confirm('Hapus semua task?')) {
+            const response = this.taskController.clearAllTasks();
+            if (response.success) { this.showMessage(response.message, 'success'); this.refresh(); }
+        }
+    }
+
+    showMessage(message, type = 'info') {
+        const msg = document.createElement('div');
+        msg.className = `message message-${type}`;
+        msg.textContent = message;
+        this.messagesContainer.appendChild(msg);
+        setTimeout(() => msg.remove(), 5000);
+    }
+
     _getEmptyStateHTML() {
-        return `
-            <div class="empty-state">
-                <p>Belum ada task</p>
-                <small>Buat task pertama Anda menggunakan form di atas</small>
-            </div>
-        `;
+        return `<div class="empty-state"><p>Belum ada task.</p></div>`;
     }
 
-    /**
-     * Create messages container
-     */
     _createMessagesContainer() {
-        const container = document.createElement('div');
-        container.id = 'messages';
-        container.className = 'messages-container';
-        document.body.appendChild(container);
-        return container;
+        const c = document.createElement('div');
+        c.id = 'messages';
+        c.className = 'messages-container';
+        document.body.appendChild(c);
+        return c;
     }
 
-    /**
-     * Escape HTML to prevent XSS
-     */
     _escapeHtml(text) {
         const div = document.createElement('div');
         div.textContent = text;
@@ -490,7 +328,6 @@ class TaskView {
     }
 }
 
-// Export untuk digunakan di file lain
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = TaskView;
 } else {
