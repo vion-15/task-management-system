@@ -1,30 +1,20 @@
 if (typeof require !== 'undefined' && typeof module !== 'undefined') {
-    // Hanya import jika kita benar-benar di Node.js environment (untuk Testing)
     if (typeof EnhancedTask === 'undefined') {
         EnhancedTask = require('../models/EnhancedTask');
     }
 }
+
 /**
  * Task Repository - Mengelola penyimpanan dan pengambilan data Task
- * * Repository Pattern untuk Task dengan fitur:
- * - CRUD operations
- * - Query methods (filter, search, sort)
- * - User-specific operations
- * - Statistics dan reporting
  */
 class TaskRepository {
     constructor(storageManager) {
         this.storage = storageManager;
-        this.tasks = new Map(); // Cache in-memory
+        this.tasks = new Map();
         this.storageKey = 'tasks';
-
-        // Load existing tasks dari storage
         this._loadTasksFromStorage();
     }
 
-    /**
-     * Buat task baru
-     */
     create(taskData) {
         try {
             const task = new EnhancedTask(
@@ -33,12 +23,10 @@ class TaskRepository {
                 taskData.ownerId,
                 taskData
             );
-
             this.tasks.set(task.id, task);
             this._saveTasksToStorage();
             return task;
         } catch (error) {
-            console.error('Error creating task:', error);
             throw error;
         }
     }
@@ -55,120 +43,45 @@ class TaskRepository {
         return this.findAll().filter(task => task.ownerId === ownerId);
     }
 
-    // --- DAY 4 CATEGORY METHODS START ---
-
-    /**
-     * Find tasks by category
-     * @param {string} category - Category to filter by
-     * @returns {EnhancedTask[]} - Array of tasks in category
-     */
     findByCategory(category) {
         return this.findAll().filter(task => task.category === category);
     }
 
-    /**
-     * Get task statistics by category
-     * @param {string} userId - User ID (optional)
-     * @returns {Object} - Statistics grouped by category
-     */
-    getCategoryStats(userId = null) {
-        let tasks = userId ? this.findByOwner(userId) : this.findAll();
+    filter(filters) {
+        let results = this.findAll();
+        if (filters.ownerId) results = results.filter(t => t.ownerId === filters.ownerId);
+        if (filters.category) results = results.filter(t => t.category === filters.category);
+        if (filters.status) results = results.filter(t => t.status === filters.status);
+        if (filters.priority) results = results.filter(t => t.priority === filters.priority);
+        return results;
+    }
 
-        const stats = {};
-        const categories = EnhancedTask.getAvailableCategories();
-
-        // Initialize all categories with 0
-        categories.forEach(category => {
-            stats[category] = {
-                total: 0,
-                completed: 0,
-                pending: 0,
-                overdue: 0
-            };
-        });
-
-        // Count tasks in each category
-        tasks.forEach(task => {
-            const category = task.category;
-            if (stats[category]) {
-                stats[category].total++;
-
-                if (task.isCompleted) {
-                    stats[category].completed++;
-                } else {
-                    stats[category].pending++;
-                }
-
-                if (task.isOverdue) {
-                    stats[category].overdue++;
-                }
+    sort(tasks, sortBy = 'createdAt', order = 'desc') {
+        return tasks.sort((a, b) => {
+            let vA = a[sortBy], vB = b[sortBy];
+            if (sortBy === 'priority') {
+                const p = { 'low': 1, 'medium': 2, 'high': 3, 'urgent': 4 };
+                vA = p[a.priority]; vB = p[b.priority];
             }
+            return order === 'asc' ? (vA > vB ? 1 : -1) : (vA < vB ? 1 : -1);
         });
-
-        return stats;
     }
 
-    /**
-     * Get most used categories
-     * @param {string} userId - User ID (optional)
-     * @param {number} limit - Number of categories to return
-     * @returns {Array} - Array of categories sorted by usage
-     */
-    getMostUsedCategories(userId = null, limit = 5) {
-        const stats = this.getCategoryStats(userId);
-
-        return Object.entries(stats)
-            .sort(([, a], [, b]) => b.total - a.total)
-            .slice(0, limit)
-            .map(([category, data]) => ({
-                category,
-                count: data.total,
-                displayName: EnhancedTask.prototype.getCategoryDisplayName.call({ _category: category })
-            }));
-    }
-
-    // --- DAY 4 CATEGORY METHODS END ---
-
-    findByAssignee(assigneeId) {
-        return this.findAll().filter(task => task.assigneeId === assigneeId);
-    }
-
-    findByStatus(status) {
-        return this.findAll().filter(task => task.status === status);
-    }
-
-    findByPriority(priority) {
-        return this.findAll().filter(task => task.priority === priority);
-    }
-
-    findOverdue() {
-        return this.findAll().filter(task => task.isOverdue);
-    }
-
+    // --- FIX: Memproses semua field update termasuk priority ---
     update(id, updates) {
         const task = this.findById(id);
         if (!task) return null;
-
-        try {
-            if (updates.title !== undefined) task.updateTitle(updates.title);
-            if (updates.description !== undefined) task.updateDescription(updates.description);
-            if (updates.category !== undefined) task.updateCategory(updates.category);
-            if (updates.priority !== undefined) task.updatePriority(updates.priority);
-            if (updates.status !== undefined) task.updateStatus(updates.status);
-            if (updates.dueDate !== undefined) task.setDueDate(updates.dueDate);
-            if (updates.assigneeId !== undefined) task.assignTo(updates.assigneeId);
-            if (updates.estimatedHours !== undefined) task.setEstimatedHours(updates.estimatedHours);
-            if (updates.addTimeSpent !== undefined) task.addTimeSpent(updates.addTimeSpent);
-            if (updates.addTag !== undefined) task.addTag(updates.addTag);
-            if (updates.removeTag !== undefined) task.removeTag(updates.removeTag);
-            if (updates.addNote !== undefined) task.addNote(updates.addNote);
-
-            this._saveTasksToStorage();
-            return task;
-        } catch (error) {
-            console.error('Error updating task:', error);
-            throw error;
-        }
+        
+        if (updates.title !== undefined) task.updateTitle(updates.title);
+        if (updates.description !== undefined) task.updateDescription(updates.description);
+        if (updates.category !== undefined) task.updateCategory(updates.category);
+        if (updates.priority !== undefined) task.updatePriority(updates.priority); // <--- FIX
+        if (updates.status !== undefined) task.updateStatus(updates.status);
+        if (updates.dueDate !== undefined) task.setDueDate(updates.dueDate);
+        if (updates.estimatedHours !== undefined) task.setEstimatedHours(updates.estimatedHours);
+        
+        this._saveTasksToStorage();
+        return task;
     }
 
     delete(id) {
@@ -180,59 +93,73 @@ class TaskRepository {
         return false;
     }
 
-    getStats(userId = null) {
+    getCategoryStats(userId = null) {
         let tasks = userId ? this.findByOwner(userId) : this.findAll();
-
-        const stats = {
-            total: tasks.length,
-            byStatus: {},
-            byPriority: {},
-            byCategory: {},
-            overdue: tasks.filter(task => task.isOverdue).length,
-            completed: tasks.filter(task => task.isCompleted).length
-        };
-
-        // Menggunakan helper statis dari EnhancedTask untuk konsistensi kategori
-        const categories = EnhancedTask.getAvailableCategories();
-        categories.forEach(category => {
-            stats.byCategory[category] = tasks.filter(task => task.category === category).length;
+        const stats = {};
+        EnhancedTask.getAvailableCategories().forEach(c => {
+            stats[c] = { total: 0, completed: 0, pending: 0, overdue: 0 };
         });
-
-        // Count by status & priority
-        ['pending', 'in-progress', 'blocked', 'completed', 'cancelled'].forEach(s => {
-            stats.byStatus[s] = tasks.filter(task => task.status === s).length;
+        tasks.forEach(t => {
+            if (stats[t.category]) {
+                stats[t.category].total++;
+                if (t.isCompleted) stats[t.category].completed++;
+                else stats[t.category].pending++;
+                if (t.isOverdue) stats[t.category].overdue++;
+            }
         });
-        ['low', 'medium', 'high', 'urgent'].forEach(p => {
-            stats.byPriority[p] = tasks.filter(task => task.priority === p).length;
-        });
-
         return stats;
     }
 
-    // Private methods
-    _loadTasksFromStorage() {
-        try {
-            const tasksData = this.storage.load(this.storageKey, []);
-            tasksData.forEach(taskData => {
-                const task = EnhancedTask.fromJSON(taskData);
-                this.tasks.set(task.id, task);
-            });
-        } catch (error) {
-            console.error('Error loading tasks:', error);
+    getMostUsedCategories(userId = null, limit = 5) {
+        const stats = this.getCategoryStats(userId);
+        return Object.entries(stats)
+            .sort(([,a], [,b]) => b.total - a.total)
+            .slice(0, limit)
+            .map(([category, data]) => ({
+                category,
+                count: data.total,
+                displayName: EnhancedTask.prototype.getCategoryDisplayName.call({ _category: category })
+            }));
+    }
+
+    getStats(userId = null) {
+        let tasks = userId ? this.findByOwner(userId) : this.findAll();
+        return {
+            total: tasks.length,
+            completed: tasks.filter(t => t.isCompleted).length,
+            overdue: tasks.filter(t => t.isOverdue).length,
+            byStatus: {
+                pending: tasks.filter(t => t.status === 'pending').length,
+                completed: tasks.filter(t => t.status === 'completed').length
+            },
+            byPriority: { high: tasks.filter(t => t.priority === 'high').length }
+        };
+    }
+
+    search(query) {
+        const term = query.toLowerCase();
+        return this.findAll().filter(t => t.title.toLowerCase().includes(term));
+    }
+
+    deleteAllByOwner(ownerId) {
+        for (const [id, t] of this.tasks.entries()) {
+            if (t.ownerId === ownerId) this.tasks.delete(id);
         }
+        this._saveTasksToStorage();
+        return true;
+    }
+
+    _loadTasksFromStorage() {
+        const data = this.storage.load(this.storageKey, []);
+        data.forEach(d => this.tasks.set(d.id, EnhancedTask.fromJSON(d)));
     }
 
     _saveTasksToStorage() {
-        try {
-            const tasksData = Array.from(this.tasks.values()).map(task => task.toJSON());
-            this.storage.save(this.storageKey, tasksData);
-        } catch (error) {
-            console.error('Error saving tasks:', error);
-        }
+        const data = Array.from(this.tasks.values()).map(t => t.toJSON());
+        this.storage.save(this.storageKey, data);
     }
 }
 
-// Export
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = TaskRepository;
 } else {
