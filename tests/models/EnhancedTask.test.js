@@ -118,6 +118,68 @@ describe('EnhancedTask Model', () => {
             expect(task.daysUntilDue).toBe(-1);
         });
     });
+
+    // --- NEW: CATEGORY MANAGEMENT TESTS (Step 4.2) ---
+    describe('Category Management', () => {
+        let task;
+        
+        beforeEach(() => {
+            const taskData = TestDataFactory.createValidTaskData();
+            task = new EnhancedTask(taskData.title, taskData.description, taskData.ownerId);
+        });
+        
+        test('should have default category', () => {
+            expect(task.category).toBe('personal');
+        });
+        
+        test('should update category successfully', () => {
+            // Act
+            task.updateCategory('work');
+            
+            // Assert
+            expect(task.category).toBe('work');
+            expect(task.updatedAt).toBeInstanceOf(Date);
+        });
+        
+        test('should throw error for invalid category', () => {
+            // Act & Assert
+            expect(() => {
+                task.updateCategory('invalid-category');
+            }).toThrow('Kategori tidak valid');
+        });
+        
+        test('should return available categories', () => {
+            // Act
+            const categories = EnhancedTask.getAvailableCategories();
+            
+            // Assert
+            expect(categories).toBeInstanceOf(Array);
+            expect(categories).toContain('work');
+            expect(categories).toContain('personal');
+            expect(categories).toContain('study');
+            expect(categories.length).toBeGreaterThan(0);
+        });
+        
+        test('should get category display name', () => {
+            // Arrange
+            task.updateCategory('work');
+            
+            // Act
+            const displayName = task.getCategoryDisplayName();
+            
+            // Assert
+            expect(displayName).toBe('Work & Business');
+        });
+        
+        test('should check if task is in category', () => {
+            // Arrange
+            task.updateCategory('study');
+            
+            // Act & Assert
+            expect(task.isInCategory('study')).toBe(true);
+            expect(task.isInCategory('work')).toBe(false);
+        });
+    });
     
     describe('Task Updates', () => {
         let task;
@@ -137,7 +199,6 @@ describe('EnhancedTask Model', () => {
             
             // Assert
             expect(task.title).toBe(newTitle);
-            // Gunakan toBeGreaterThanOrEqual untuk menghindari timing issue
             expect(task.updatedAt.getTime()).toBeGreaterThanOrEqual(oldUpdatedAt.getTime());
         });
         
@@ -146,21 +207,6 @@ describe('EnhancedTask Model', () => {
             expect(() => {
                 task.updateTitle('');
             }).toThrow('Judul task tidak boleh kosong');
-        });
-        
-        test('should update category successfully', () => {
-            // Act
-            task.updateCategory('study');
-            
-            // Assert
-            expect(task.category).toBe('study');
-        });
-        
-        test('should throw error for invalid category', () => {
-            // Act & Assert
-            expect(() => {
-                task.updateCategory('invalid-category');
-            }).toThrow('Kategori tidak valid');
         });
         
         test('should add and remove tags', () => {
